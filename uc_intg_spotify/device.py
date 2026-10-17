@@ -169,7 +169,7 @@ class SpotifyDevice(PollingDevice):
 
         device_id = self.get_device_id_by_name(name)
         if device_id and any(d.get("id") == device_id for d in self._devices):
-            return await self._client.transfer_playback(device_id, play=self._is_playing)
+            return await self._transfer_playback(device_id)
 
         zc_dev = self._find_zeroconf_device_by_name(name)
         if zc_dev:
@@ -180,8 +180,14 @@ class SpotifyDevice(PollingDevice):
             return False
 
         if device_id:
-            return await self._client.transfer_playback(device_id, play=self._is_playing)
+            return await self._transfer_playback(device_id)
         return False
+
+    async def _transfer_playback(self, device_id: str) -> bool:
+        ok = await self._client.transfer_playback(device_id, play=self._is_playing)
+        if ok:
+            self.schedule_playback_refresh()
+        return ok
 
     async def _activate_device(self, zc_dev: dict[str, Any]) -> bool:
         login_id = await self._ensure_login_id()
@@ -251,9 +257,18 @@ class SpotifyDevice(PollingDevice):
         self._playback_refresh_task = asyncio.create_task(self._refresh_playback_after_delay())
 
     async def _refresh_playback_after_delay(self) -> None:
+        """Refresh right after a command. If the poll loop is waiting out the idle
+        interval, keep polling at the playing rate until that wait is over, so
+        playback started from idle is not left unrefreshed for up to a minute."""
         try:
+            catching_up = self._poll_interval != self._playing_poll_interval
             await asyncio.sleep(PLAYBACK_REFRESH_DELAY)
             await self.poll_device()
+            waited = 0
+            while catching_up and self._is_playing and waited + self._playing_poll_interval < IDLE_POLL_INTERVAL:
+                await asyncio.sleep(self._playing_poll_interval)
+                waited += self._playing_poll_interval
+                await self.poll_device()
         except asyncio.CancelledError:
             raise
         except Exception as err:
