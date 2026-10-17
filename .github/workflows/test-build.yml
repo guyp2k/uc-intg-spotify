@@ -1,0 +1,76 @@
+# Fork-only test build of the refresh after play. Not part of the PR.
+name: "Test build"
+
+"on":
+  push:
+    branches:
+      - build/refresh-after-play
+
+env:
+  INTG_NAME: spotify
+  PYTHON_VER: 3.11.12-0.3.0
+  VERSION: 3.5.2-beta.4
+
+jobs:
+  build:
+    name: Build test archive
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Mark the test version
+        run: |
+          jq --arg v "$VERSION" '.version = $v' driver.json > driver.json.new
+          mv driver.json.new driver.json
+          jq -r .version driver.json
+
+      - name: Build
+        run: |
+          docker run --rm --name builder \
+            --platform=aarch64 \
+            --user=$(id -u):$(id -g) \
+            -v ${GITHUB_WORKSPACE}:/workspace \
+            docker.io/unfoldedcircle/r2-pyinstaller:${PYTHON_VER} \
+            bash -c \
+            "cd /workspace && \
+              python -m pip install -r requirements.txt && \
+              pyinstaller --clean --onedir --name driver \
+                --add-data driver.json:. \
+                --collect-all zeroconf \
+                --collect-all ucapi \
+                --collect-all ucapi_framework \
+                --hidden-import uc_intg_${INTG_NAME}.driver \
+                --hidden-import uc_intg_${INTG_NAME}.device \
+                --hidden-import uc_intg_${INTG_NAME}.config \
+                --hidden-import uc_intg_${INTG_NAME}.client \
+                --hidden-import uc_intg_${INTG_NAME}.media_player \
+                --hidden-import uc_intg_${INTG_NAME}.remote \
+                --hidden-import uc_intg_${INTG_NAME}.browser \
+                --hidden-import uc_intg_${INTG_NAME}.setup \
+                --hidden-import uc_intg_${INTG_NAME}.select \
+                --hidden-import uc_intg_${INTG_NAME}.sensor \
+                --hidden-import uc_intg_${INTG_NAME}.discovery \
+                --paths . \
+                uc_intg_${INTG_NAME}/__init__.py"
+
+      - name: Prepare artifacts
+        run: |
+          mkdir -p artifacts/bin
+          mv dist/driver/* artifacts/bin/
+          cp driver.json artifacts/
+          echo "ARTIFACT_NAME=uc-intg-${INTG_NAME}-${VERSION}-aarch64" >> $GITHUB_ENV
+
+      - name: Create archive and hash
+        run: |
+          tar czvf ${ARTIFACT_NAME}.tar.gz -C ${GITHUB_WORKSPACE}/artifacts .
+          sha256sum ${ARTIFACT_NAME}.tar.gz | tee ${ARTIFACT_NAME}.tar.gz.sha256
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT_NAME }}
+          path: |
+            ${{ env.ARTIFACT_NAME }}.tar.gz
+            ${{ env.ARTIFACT_NAME }}.tar.gz.sha256
+          if-no-files-found: error
+          retention-days: 14
