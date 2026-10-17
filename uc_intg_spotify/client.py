@@ -414,11 +414,6 @@ class SpotifyClient:
     async def get_artist(self, artist_id: str) -> dict[str, Any] | None:
         return await self._api_request("GET", f"/artists/{artist_id}")
 
-    async def get_artist_top_tracks(self, artist_id: str) -> dict[str, Any] | None:
-        return await self._api_request(
-            "GET", f"/artists/{artist_id}/top-tracks?market=from_token"
-        )
-
     async def get_artist_albums(
         self, artist_id: str, limit: int = 20, offset: int = 0
     ) -> dict[str, Any] | None:
@@ -449,13 +444,6 @@ class SpotifyClient:
     async def get_followed_artists(self, limit: int = 50) -> dict[str, Any] | None:
         return await self._api_request(
             "GET", f"/me/following?type=artist&limit={limit}"
-        )
-
-    async def get_new_releases(
-        self, limit: int = 20, offset: int = 0
-    ) -> dict[str, Any] | None:
-        return await self._api_request(
-            "GET", f"/browse/new-releases?limit={limit}&offset={offset}"
         )
 
     async def search(

@@ -43,10 +43,9 @@ Browse and play your Spotify library directly from the Remote's media browser:
 - **Saved Albums** — Your album library
 - **Liked Songs** — Saved tracks collection
 - **Top Tracks** — Your most-played tracks
-- **Top Artists** — Your most-listened artists with top tracks and discography
+- **Top Artists** — Your most-listened artists and their discography
 - **Followed Artists** — Artists you follow
 - **Recently Played** — Recent listening history
-- **New Releases** — Latest album releases
 - **Search** — Full-text search across tracks, albums, artists, and playlists
 - **Availability Aware** — Tracks not available in your country are marked non-playable instead of failing silently
 

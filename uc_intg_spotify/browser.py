@@ -30,9 +30,10 @@ ROOT_ITEMS = [
     ("top_tracks", "Top Tracks", MediaClass.TRACK),
     ("top_artists", "Top Artists", MediaClass.ARTIST),
     ("followed_artists", "Artists", MediaClass.ARTIST),
-    ("new_releases", "New Releases", MediaClass.ALBUM),
     ("queue", "Queue", MediaClass.TRACK),
 ]
+
+ARTIST_ALBUMS_PAGE = 10
 
 
 async def browse(client: SpotifyClient, options: BrowseOptions) -> BrowseResults | StatusCodes:
@@ -64,9 +65,6 @@ async def browse(client: SpotifyClient, options: BrowseOptions) -> BrowseResults
 
     if media_id == "followed_artists":
         return await _browse_followed_artists(client, options)
-
-    if media_id == "new_releases":
-        return await _browse_new_releases(client, options)
 
     if media_id == "queue":
         return await _browse_queue(client, options)
@@ -192,7 +190,6 @@ async def _fetch_root_thumbnails(client: SpotifyClient) -> dict[str, str | None]
         _first_image(client.get_top_tracks(limit=1, offset=0), "top_tracks"),
         _first_image(client.get_top_artists(limit=1, offset=0), "top_artists"),
         _first_image(client.get_followed_artists(limit=1), "followed_artists", "artists"),
-        _first_image(client.get_new_releases(limit=1, offset=0), "new_releases", "albums"),
         return_exceptions=True,
     )
 
@@ -409,35 +406,6 @@ async def _browse_followed_artists(client: SpotifyClient, options: BrowseOptions
     )
 
 
-async def _browse_new_releases(client: SpotifyClient, options: BrowseOptions) -> BrowseResults:
-    page = _get_page(options)
-    limit = _get_limit(options, default=20)
-    offset = (page - 1) * limit
-
-    data = await client.get_new_releases(limit=limit, offset=offset)
-    if not data:
-        return _empty_browse("new_releases", "New Releases", page, limit)
-
-    items = []
-    for album in data.get("albums", {}).get("items", []):
-        item = _album_to_browse_item(album)
-        if item:
-            items.append(item)
-
-    total = data.get("albums", {}).get("total", 0)
-    return BrowseResults(
-        media=BrowseMediaItem(
-            title="New Releases",
-            media_class=MediaClass.ALBUM,
-            media_type="directory",
-            media_id="new_releases",
-            can_browse=True,
-            items=items,
-        ),
-        pagination=Pagination(page=page, limit=limit, count=total),
-    )
-
-
 async def _browse_queue(client: SpotifyClient, options: BrowseOptions) -> BrowseResults:
     data = await client.get_queue()
     if not data:
@@ -582,21 +550,18 @@ async def _browse_artist(
     artist_images = artist_data.get("images", [])
     artist_thumbnail = artist_images[0]["url"] if artist_images else None
 
+    page = _get_page(options)
+    limit = min(_get_limit(options, default=ARTIST_ALBUMS_PAGE), ARTIST_ALBUMS_PAGE)
+    offset = (page - 1) * limit
+
     items = []
-
-    top_tracks = await client.get_artist_top_tracks(artist_id)
-    if top_tracks:
-        for track in top_tracks.get("tracks", []):
-            item = _track_to_browse_item(track)
-            if item:
-                items.append(item)
-
-    albums = await client.get_artist_albums(artist_id, limit=20)
+    albums = await client.get_artist_albums(artist_id, limit=limit, offset=offset)
     if albums:
         for album in albums.get("items", []):
             item = _album_to_browse_item(album)
             if item:
                 items.append(item)
+    total = (albums or {}).get("total", len(items))
 
     return BrowseResults(
         media=BrowseMediaItem(
@@ -608,7 +573,7 @@ async def _browse_artist(
             thumbnail=artist_thumbnail,
             items=items,
         ),
-        pagination=Pagination(page=1, limit=len(items), count=len(items)),
+        pagination=Pagination(page=page, limit=limit, count=total),
     )
 
 
